@@ -7,107 +7,100 @@ import java.util.List;
 
 public class RowStatus implements Serializable {
     private final int layers; // 层数
-    private final int maxBay;
-    private final List<BayStatus> bayStatusList; // 每层的仓位状态
+    private final int maxBay; // 最大仓位
+    private final BayStatus[] tierList; // 该行的各层状态，引用 BLC-Status 的二维数组
     private int bayRule = BayStatus.ANY_RULE; // 所有层共享的规则
     private boolean allowOverhang = false; // 是否允许悬空，默认禁止
 
-    public RowStatus(int layers, int maxBay) {
-        if (layers < 1) {
-            throw new IllegalArgumentException("层数必须大于0");
-        }
-        this.layers = layers;
-        this.maxBay = maxBay;
-        this.bayStatusList = new ArrayList<>();
-        for (int i = 0; i < layers; i++) {
-            bayStatusList.add(new BayStatus(maxBay));
-        }
+    public RowStatus(BayStatus[][] blcSpace, int rowIndex) {
+        this.tierList = blcSpace[rowIndex];
+        this.layers = blcSpace[0].length;
+        this.maxBay = blcSpace[0][0].getMaxBay();
     }
 
-    public RowStatus(int layers, int maxBay, int bayRule) {
-        this(layers, maxBay);
-        setBayRule(bayRule);
-    }
-
-    // 设置所有层的规则
     public void setBayRule(int rule) {
         this.bayRule = rule;
-        for (BayStatus bayStatus : bayStatusList) {
+        for (BayStatus bayStatus : tierList) {
             bayStatus.setBayRule(rule);
         }
     }
 
-    // 开启/关闭悬空模式
     public void setAllowOverhang(boolean allow) {
         this.allowOverhang = allow;
     }
 
-    // 占用指定层和仓位（0-based）
+    public int size() {
+        int count = 0;
+        for (int i = 0; i < layers; i++) {
+            count += tierList[i].size();
+        }
+        return count;
+    }
+
+    public int sizeBasedSpace() {
+        int count = 0;
+        for (int i = 0; i < layers; i++) {
+            count += tierList[i].sizeBasedSpace();
+        }
+        return count;
+    }
+
     public boolean occupy(int layer, int bay) {
         if (!isValidLayerBay(layer, bay)) {
             return false;
         }
         if (isNonSuspended(layer, bay)) {
-            return bayStatusList.get(layer).occupy(bay);
+            return tierList[layer].occupy(bay);
         }
         return false;
     }
 
-    // 预订指定层和仓位
     public boolean book(int layer, int bay) {
         if (!isValidLayerBay(layer, bay)) {
             return false;
         }
-        return bayStatusList.get(layer).book(bay);
+        return tierList[layer].book(bay);
     }
 
-    // 将已预订的仓位转为占用状态
     public boolean occupyBooked(int layer, int bay) {
         if (!isValidLayerBay(layer, bay)) {
             return false;
         }
         if (isNonSuspended(layer, bay)) {
-            return bayStatusList.get(layer).occupyBooked(bay);
+            return tierList[layer].occupyBooked(bay);
         }
         return false;
     }
 
-    // 取消指定层和仓位的预订状态
     public void cancelBooked(int layer, int bay) {
         if (!isValidLayerBay(layer, bay)) {
-            return; // 层号或仓位无效，直接返回
+            return;
         }
-        bayStatusList.get(layer).cancelBooked(bay);
+        tierList[layer].cancelBooked(bay);
     }
 
-    // 释放指定层和仓位
     public void release(int layer, int bay) {
         if (!isValidLayerBay(layer, bay)) {
             return;
         }
-        bayStatusList.get(layer).release(bay);
+        tierList[layer].release(bay);
     }
 
-    // 查询指定层和仓位是否悬空
     public boolean isNonSuspended(int layer, int bay) {
-        if (!allowOverhang && layer > 0) { // 注意：layer > 0 表示不是最底层
-            BayStatus lowerBay = bayStatusList.get(layer - 1); // 下方层
-            return lowerBay.canBear(bay); // 下方层有货物，才能放货，禁止悬空
+        if (!allowOverhang && layer > 0) {
+            BayStatus lowerBay = tierList[layer - 1];
+            return lowerBay.canBear(bay);
         }
         return true;
     }
 
-    // 查询指定层和仓位是否可用
     public boolean isAvailable(int layer, int bay) {
         if (!isValidLayerBay(layer, bay)) {
             return false;
         }
-
-        if (!bayStatusList.get(layer).isAvailable(bay)) {
-            return false; // 仓位不可用
+        if (!tierList[layer].isAvailable(bay)) {
+            return false;
         }
-
-        // 检查悬空限制
         return isNonSuspended(layer, bay);
     }
 
@@ -115,65 +108,69 @@ public class RowStatus implements Serializable {
         if (!isValidLayerBay(layer, bay)) {
             return false;
         }
-        return bayStatusList.get(layer).isAvailable(bay);
+        return tierList[layer].isAvailable(bay);
     }
 
-    // 查询指定层和仓位是否可以取货
     public boolean isFetchable(int layer, int bay) {
         if (!isValidLayerBay(layer, bay)) {
             return false;
         }
-        if (!bayStatusList.get(layer).hasGoods(bay)) {
+        if (!tierList[layer].hasGoods(bay)) {
             return false;
         }
-
-        if (!allowOverhang && layer < layers - 1) { // 注意：layer < layers - 1 表示不是最顶层
-            BayStatus upperBay = bayStatusList.get(layer + 1); // 上方层
-            return !upperBay.canCover(bay); // 上方层没有货物，才能取货，禁止悬空
+        if (!allowOverhang && layer < layers - 1) {
+            BayStatus upperBay = tierList[layer + 1];
+            return !upperBay.canCover(bay);
         }
         return true;
     }
 
-    // 返回指定层的已用仓位列表
     public List<Integer> getUsedBays(int layer) {
         if (!isValidLayer(layer)) {
-            return new ArrayList<>(); // 层号无效时返回空列表
+            return new ArrayList<>();
         }
-        return bayStatusList.get(layer).getUsedBays();
+        return tierList[layer].getUsedBays();
     }
 
-    // 返回所有层的已用仓位列表
     public List<List<Integer>> getUsedBays() {
         List<List<Integer>> usedBays = new ArrayList<>();
         for (int i = 0; i < layers; i++) {
-            usedBays.add(bayStatusList.get(i).getUsedBays());
+            usedBays.add(tierList[i].getUsedBays());
         }
         return usedBays;
     }
 
-    // 获取指定层的可用仓位列表
     public List<Integer> getAvailableBays(int layer) {
         if (!isValidLayer(layer)) {
-            return new ArrayList<>(); // 层号无效时返回空列表
+            return new ArrayList<>();
         }
-
         List<Integer> availableBays = new ArrayList<>();
         for (int bay = 1; bay <= maxBay; bay++) {
             if (isAvailable(layer, bay)) {
                 availableBays.add(bay);
             }
         }
-
         return availableBays;
     }
 
-    // 获取指定 Bay 的可用仓位列表
+    public int getAvailableBaysByBay(int bay) {
+        if (bay < 1 || bay > maxBay) {
+            return -1;
+        }
+        int availableBays = -1;
+        for (int layer = 0; layer < layers; layer++) {
+            if (isAvailable(layer, bay)) {
+                availableBays = layer;
+                break;
+            }
+        }
+        return availableBays;
+    }
     public int[][] getAvailableBaysByLargeBay(int bay) {
         if (bay < 1 || bay > maxBay || bay % 2 != 0) {
             return null;
         }
-
-        int[][] availableBays = new int[3][2]; // 最多3个仓位，每条记录layer和 bay
+        int[][] availableBays = new int[3][2];
         for (int i = 0; i < 3; i++) {
             availableBays[i][0] = -1;
             availableBays[i][1] = -1;
@@ -182,9 +179,8 @@ public class RowStatus implements Serializable {
         boolean found_left_bay = false;
         boolean found_right_bay = false;
         int count = 0;
-
         for (int layer = 0; layer < layers; layer++) {
-            BayStatus bayStatus = bayStatusList.get(layer);
+            BayStatus bayStatus = tierList[layer];
             if (bayStatus.isAvailable(bay)) {
                 availableBays[count][0] = layer;
                 availableBays[count][1] = bay;
@@ -203,15 +199,13 @@ public class RowStatus implements Serializable {
                 found_right_bay = true;
                 count++;
             }
-            if (found_large_bay || (found_left_bay && found_right_bay))
-                break;
+            if (found_large_bay || (found_left_bay && found_right_bay)) break;
         }
         return availableBays;
     }
 
     public List<Integer> getAvailableSmallBays(int layer) {
         if (!isValidLayer(layer)) return new ArrayList<>();
-
         List<Integer> availableSmallBays = new ArrayList<>();
         for (int bay = 1; bay <= maxBay; bay += 2) {
             if (isAvailable(layer, bay)) {
@@ -223,7 +217,6 @@ public class RowStatus implements Serializable {
 
     public List<Integer> getAvailableLargeBays(int layer) {
         if (!isValidLayer(layer)) return new ArrayList<>();
-
         List<Integer> availableLargeBays = new ArrayList<>();
         for (int bay = 2; bay <= maxBay; bay += 2) {
             if (isAvailable(layer, bay)) {
@@ -233,13 +226,11 @@ public class RowStatus implements Serializable {
         return availableLargeBays;
     }
 
-    // 获取所有层的可用仓位列表
     public List<List<Integer>> getAvailableBays() {
         List<List<Integer>> layerBays = new ArrayList<>();
         for (int layer = 0; layer < layers; layer++) {
             List<Integer> bays = getAvailableBays(layer);
-            // 层为空时，结束循环
-            if (bays.isEmpty() && bayStatusList.get(layer).isEmpty()) {
+            if (bays.isEmpty() && tierList[layer].isEmpty()) {
                 break;
             }
             layerBays.add(bays);
@@ -249,15 +240,13 @@ public class RowStatus implements Serializable {
 
     public List<List<Integer>> getAvailableSmallBays() {
         List<List<Integer>> layerBays = new ArrayList<>();
-
         for (int layer = 0; layer < layers; layer++) {
             List<Integer> bays = getAvailableSmallBays(layer);
-            if (bays.isEmpty() && bayStatusList.get(layer).isEmpty()) {
+            if (bays.isEmpty() && tierList[layer].isEmpty()) {
                 break;
             }
             layerBays.add(bays);
         }
-
         return layerBays;
     }
 
@@ -265,7 +254,7 @@ public class RowStatus implements Serializable {
         List<List<Integer>> layerBays = new ArrayList<>();
         for (int layer = 0; layer < layers; layer++) {
             List<Integer> bays = getAvailableLargeBays(layer);
-            if (bays.isEmpty() && bayStatusList.get(layer).isEmpty()) {
+            if (bays.isEmpty() && tierList[layer].isEmpty()) {
                 break;
             }
             layerBays.add(bays);
@@ -274,15 +263,14 @@ public class RowStatus implements Serializable {
     }
 
     public int[] getFirstAvailableSmallBay() {
-        // 先从最低层查找，如果找不到，则从上层层继续查找，此时需要检查仓位可用性
-        int first0 = bayStatusList.getFirst().getFirstAvailableSmallBay();
+        int first0 = tierList[0].getFirstAvailableSmallBay();
         if (first0 != 0) {
             return new int[]{0, first0};
         }
         for (int layer = 1; layer < layers; layer++) {
-            List<Integer> availableBays = bayStatusList.get(layer).getAvailableBays();
+            List<Integer> availableBays = tierList[layer].getAvailableBays();
             availableBays = availableBays.stream().filter(bay -> bay % 2 == 1).toList();
-            BayStatus lowerBay = bayStatusList.get(layer - 1);
+            BayStatus lowerBay = tierList[layer - 1];
             for (int bay : availableBays) {
                 if (lowerBay.canBear(bay)) {
                     return new int[]{layer, bay};
@@ -293,14 +281,14 @@ public class RowStatus implements Serializable {
     }
 
     public int[] getFirstAvailableLargeBay() {
-        int first0 = bayStatusList.getFirst().getFirstAvailableLargeBay();
+        int first0 = tierList[0].getFirstAvailableLargeBay();
         if (first0 != 0) {
             return new int[]{0, first0};
         }
         for (int layer = 1; layer < layers; layer++) {
-            List<Integer> availableBays = bayStatusList.get(layer).getAvailableBays();
+            List<Integer> availableBays = tierList[layer].getAvailableBays();
             availableBays = availableBays.stream().filter(bay -> bay % 2 == 0).toList();
-            BayStatus lowerBay = bayStatusList.get(layer - 1);
+            BayStatus lowerBay = tierList[layer - 1];
             for (int bay : availableBays) {
                 if (lowerBay.canBear(bay)) {
                     return new int[]{layer, bay};
@@ -310,12 +298,11 @@ public class RowStatus implements Serializable {
         return new int[]{-1, -1};
     }
 
-    // 获取所有可取货的仓位列表
     public List<List<Integer>> getAllFetchableBays() {
         List<List<Integer>> fetchableBays = new ArrayList<>();
         for (int bay = 1; bay <= maxBay; bay++) {
             for (int layer = 0; layer < layers; layer++) {
-                if (bayStatusList.get(layer).canBear(bay)) {
+                if (tierList[layer].canBear(bay)) {
                     if (isFetchable(layer, bay)) {
                         fetchableBays.add(new ArrayList<>(Arrays.asList(layer, bay)));
                         break;
@@ -328,42 +315,46 @@ public class RowStatus implements Serializable {
         return fetchableBays;
     }
 
-    public List<List<Integer>> getFetchableBays(int bay) {
-        if (bay < 1 || bay > maxBay || bay % 2 == 1) return new ArrayList<>();
-        List<List<Integer>> fetchableBays = new ArrayList<>();
-        for (int b = bay - 1; b <= bay + 1; b += 1) {
-            for (int layer = 0; layer < layers; layer++) {
-                if (bayStatusList.get(layer).canBear(b)) {
-                    if (isFetchable(layer, b)) {
-                        fetchableBays.add(new ArrayList<>(Arrays.asList(layer, b)));
-                        break;
-                    }
-                } else {
-                    break;
+    public List<Integer> getFetchableBays(int bay) {
+        if (bay < 1 || bay > maxBay) return new ArrayList<>();
+
+        List<Integer> fetchableBays = new ArrayList<>();
+        for (int layer = 0; layer < layers; layer++) {
+            if (tierList[layer].canBear(bay)) {
+                if (isFetchable(layer, bay)) {
+                    fetchableBays.add(layer);
                 }
+            } else {
+                if (!allowOverhang) break;
             }
         }
+
         return fetchableBays;
     }
 
-    // 判断指定层是否为空
     public boolean isEmpty(int layer) {
         if (!isValidLayer(layer)) {
-            return true; // 层号无效时，默认为空
+            return true;
         }
-        return bayStatusList.get(layer).isEmpty();
+        return tierList[layer].isEmpty();
     }
 
-    // 获取所有层的状态详情
     public String getAllStatusDetails() {
         StringBuilder builder = new StringBuilder();
         for (int i = 0; i < layers; i++) {
-            builder.append(String.format("第%d层:\n%s\n", i + 1, bayStatusList.get(i).getStatusDetails()));
+            builder.append(String.format("  第%d层: %s\n", i + 1, tierList[i].getStatusDetails()));
         }
         return builder.toString();
     }
 
-    // 校验层号有效性
+    public String getStatusDetails(int detail) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < layers; i++) {
+            builder.append(String.format("  第%d层: %s\n", i + 1, tierList[i].getStatusDetails(detail)));
+        }
+        return builder.toString();
+    }
+
     private boolean isValidLayer(int layer) {
         return layer >= 0 && layer < layers;
     }
@@ -376,5 +367,4 @@ public class RowStatus implements Serializable {
     public String toString() {
         return String.format("wz.BLCSpace.RowStatus {layers=%d, rule=%d, allowOverhang=%s}", layers, bayRule, allowOverhang);
     }
-
 }

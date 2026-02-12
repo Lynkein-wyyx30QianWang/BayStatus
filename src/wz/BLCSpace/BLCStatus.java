@@ -8,9 +8,10 @@ public class BLCStatus {
     private final int layers;
     private final int maxBay;
     private final int rows;
-    private int bayRule = BayStatus.FOUR_N_MINUS_TWO_RULE; // 所有层共享的规则
+    private int bayRule = BayStatus.FOUR_N_MINUS_TWO_RULE;
     private boolean allowOverhang = false;
-    private List<RowStatus> totalStatus;
+    private BayStatus[][] blcSpace; // 行、层的二维数组
+    private RowStatus[] rowStatus;
 
     public BLCStatus(int maxBay, int rows, int layers) {
         if (rows < 1) {
@@ -19,18 +20,22 @@ public class BLCStatus {
         this.layers = layers;
         this.maxBay = maxBay;
         this.rows = rows;
-        this.totalStatus = new ArrayList<>();
+        this.blcSpace = new BayStatus[rows][layers];
+        this.rowStatus = new RowStatus[rows];
+
         for (int i = 0; i < rows; i++) {
-            RowStatus rowStatus = new RowStatus(layers, maxBay);
-            rowStatus.setBayRule(bayRule);
-            totalStatus.add(rowStatus);
+            for (int j = 0; j < layers; j++) {
+                blcSpace[i][j] = new BayStatus(maxBay);
+            }
+            rowStatus[i] = new RowStatus(blcSpace, i);
+            rowStatus[i].setBayRule(bayRule);
         }
     }
 
     public void setBayRule(int bayRule) {
         this.bayRule = bayRule;
-        for (RowStatus rowStatus : totalStatus) {
-            rowStatus.setBayRule(bayRule);
+        for (int i = 0; i < rows; i++) {
+            rowStatus[i].setBayRule(bayRule);
         }
     }
 
@@ -40,8 +45,8 @@ public class BLCStatus {
 
     public void setAllowOverhang(boolean allowOverhang) {
         this.allowOverhang = allowOverhang;
-        for (RowStatus rowStatus : totalStatus) {
-            rowStatus.setAllowOverhang(allowOverhang);
+        for (int i = 0; i < rows; i++) {
+            rowStatus[i].setAllowOverhang(allowOverhang);
         }
     }
 
@@ -49,69 +54,103 @@ public class BLCStatus {
         return allowOverhang;
     }
 
-    // 获取指定行的 wz.BLCSpace.RowStatus 对象
     public RowStatus getRowStatus(int rowIndex) {
         if (rowIndex < 0 || rowIndex >= rows) {
             throw new IndexOutOfBoundsException("行号超出范围");
         }
-        return totalStatus.get(rowIndex);
+        return rowStatus[rowIndex];
     }
 
-    // 占用指定行、层和仓位
+    public int getCapacity(boolean smallBased) {
+        if(smallBased) {
+            return layers * rows * (maxBay+1) / 2;
+        }else {
+            return layers * rows * ((maxBay+1) / 4);
+        }
+    }
+
+    public int size() {
+        int count = 0;
+        for (int i = 0; i < rows; i++) {
+            count += rowStatus[i].size();
+        }
+        return count;
+    }
+
+    public int sizeBasedSpace() {
+        int count = 0;
+        for (int i = 0; i < rows; i++) {
+            count += rowStatus[i].sizeBasedSpace();
+        }
+        return count;
+    }
+
     public boolean occupy(int rowIndex, int layer, int bay) {
-        return getRowStatus(rowIndex).occupy(layer, bay);
+        if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
+            return false;
+        }
+        return blcSpace[rowIndex][layer].occupy(bay);
     }
 
     public boolean occupy(APoint point) {
         return occupy(point.getRow(), point.getTier(), point.getBay());
     }
 
-    // 预订指定行、层和仓位
     public boolean book(int rowIndex, int layer, int bay) {
-        return getRowStatus(rowIndex).book(layer, bay);
+        if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
+            return false;
+        }
+        return blcSpace[rowIndex][layer].book(bay);
     }
 
     public boolean book(APoint point) {
         return book(point.getRow(), point.getTier(), point.getBay());
     }
 
-    // 将已预订的仓位转为占用状态
     public boolean occupyBooked(int rowIndex, int layer, int bay) {
-        return getRowStatus(rowIndex).occupyBooked(layer, bay);
+        if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
+            return false;
+        }
+        return blcSpace[rowIndex][layer].occupyBooked(bay);
     }
 
     public boolean occupyBooked(APoint point) {
         return occupyBooked(point.getRow(), point.getTier(), point.getBay());
     }
 
-    // 取消指定行、层和仓位的预订状态
     public void cancelBooked(int rowIndex, int layer, int bay) {
-        getRowStatus(rowIndex).cancelBooked(layer, bay);
+        if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
+            return;
+        }
+        blcSpace[rowIndex][layer].cancelBooked(bay);
     }
 
     public void cancelBooked(APoint point) {
         cancelBooked(point.getRow(), point.getTier(), point.getBay());
     }
 
-    // 释放指定行、层和仓位
     public void release(int rowIndex, int layer, int bay) {
-        getRowStatus(rowIndex).release(layer, bay);
+        if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
+            return;
+        }
+        blcSpace[rowIndex][layer].release(bay);
     }
 
     public void release(APoint point) {
         release(point.getRow(), point.getTier(), point.getBay());
     }
 
-    // 查询指定行、层和仓位是否可用
     public boolean isAvailable(int rowIndex, int layer, int bay) {
-        return getRowStatus(rowIndex).isAvailable(layer, bay);
+        if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
+            return false;
+        }
+        return blcSpace[rowIndex][layer].isAvailable(bay);
     }
 
     public boolean isAvailable(APoint point) {
         return isAvailable(point.getRow(), point.getTier(), point.getBay());
     }
 
-    // 返回第一个可用的小仓位，三维坐标表示
     public APoint getFirstAvailableSmallBay() {
         for (int i = 0; i < rows; i++) {
             int[] firstAvailableSmallBay = getRowStatus(i).getFirstAvailableSmallBay();
@@ -122,7 +161,6 @@ public class BLCStatus {
         return null;
     }
 
-    // 获取第一个可用的大仓位，三维坐标表示
     public APoint getFirstAvailableLargeBay() {
         for (int i = 0; i < rows; i++) {
             int[] firstAvailableLargeBay = getRowStatus(i).getFirstAvailableLargeBay();
@@ -133,13 +171,12 @@ public class BLCStatus {
         return null;
     }
 
-    // 返回所有可用的小仓位，三维坐标表示
     public List<APoint> getAllAvailableSmallBays() {
         List<APoint> availableBays = new ArrayList<>();
         for (int i = 0; i < rows; i++) {
-            List<List< Integer>> smallBays = totalStatus.get(i).getAvailableSmallBays();
+            List<List<Integer>> smallBays = getRowStatus(i).getAvailableSmallBays();
             for (int j = 0; j < smallBays.size(); j++) {
-                List< Integer> smallBay = smallBays.get(j);
+                List<Integer> smallBay = smallBays.get(j);
                 if (!smallBay.isEmpty()) {
                     for (int b : smallBay) {
                         availableBays.add(new APoint(b, i, j));
@@ -150,13 +187,12 @@ public class BLCStatus {
         return availableBays;
     }
 
-    // 获取所有可用的大仓位，三维坐标表示
     public List<APoint> getAllAvailableLargeBays() {
         List<APoint> availableBays = new ArrayList<>();
         for (int i = 0; i < rows; i++) {
-            List<List< Integer>> largeBays = totalStatus.get(i).getAvailableLargeBays();
+            List<List<Integer>> largeBays = getRowStatus(i).getAvailableLargeBays();
             for (int j = 0; j < largeBays.size(); j++) {
-                List< Integer> largeBay = largeBays.get(j);
+                List<Integer> largeBay = largeBays.get(j);
                 if (!largeBay.isEmpty()) {
                     for (int b : largeBay) {
                         availableBays.add(new APoint(b, i, j));
@@ -167,25 +203,20 @@ public class BLCStatus {
         return availableBays;
     }
 
-    // 获取指定 Bay 的可用仓位列表，三维坐标表示。注意：Bay 限制为偶数，检索时包括左右相邻的奇数Bay。
     public List<APoint> getAvailableBays(int bay) {
         List<APoint> availableBays = new ArrayList<>();
         for (int i = 0; i < rows; i++) {
-            int[][] rowBays = totalStatus.get(i).getAvailableBaysByLargeBay(bay);
-            for (int[] row : rowBays) {
-                if (row[0] < 0) break;
-
-                availableBays.add(new APoint(row[1], i, row[0]));
-            }
+            int tier = getRowStatus(i).getAvailableBaysByBay( bay);
+            if (tier >= 0)
+                availableBays.add(new APoint(bay, i, tier));
         }
         return availableBays;
     }
 
-    // 获取所有没有被上层压住的货物仓位列表，三维坐标表示
     public List<APoint> getAllFetchableBays() {
         List<APoint> availableBays = new ArrayList<>();
         for (int i = 0; i < rows; i++) {
-            List<List< Integer>> fetchableBays = totalStatus.get(i).getAllFetchableBays();
+            List<List<Integer>> fetchableBays = getRowStatus(i).getAllFetchableBays();
             for (List<Integer> fetchableBay : fetchableBays) {
                 availableBays.add(new APoint(fetchableBay.get(1), i, fetchableBay.get(0)));
             }
@@ -196,21 +227,35 @@ public class BLCStatus {
     public List<APoint> getFetchableBays(int bay) {
         List<APoint> availableBays = new ArrayList<>();
         for (int i = 0; i < rows; i++) {
-            List<List< Integer>> fetchableBays = totalStatus.get(i).getFetchableBays(bay);
-            for (List<Integer> fetchableBay : fetchableBays) {
-                availableBays.add(new APoint(fetchableBay.get(1), i, fetchableBay.get(0)));
+            List<Integer> fetchableBays = getRowStatus(i).getFetchableBays(bay);
+            for (int layer : fetchableBays) {
+                availableBays.add(new APoint(bay, i, layer));
             }
         }
         return availableBays;
     }
 
-    // 获取所有行的状态详情
     public String getAllRowsStatusDetails() {
         StringBuilder builder = new StringBuilder();
         for (int i = 0; i < rows; i++) {
-            builder.append(String.format("第%d行:\n%s\n", i + 1, totalStatus.get(i).getAllStatusDetails()));
+            builder.append(String.format("第%d行:\n%s\n", i + 1, getRowStatus(i).getAllStatusDetails()));
         }
         return builder.toString();
+    }
+
+    public String getAllStatusDetails(int detail) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < rows; i++) {
+            builder.append(String.format("第%d行:\n%s\n", i + 1, getRowStatus(i).getStatusDetails(detail)));
+        }
+        return builder.toString();
+    }
+
+    public String getRowStatusDetails(int rowIndex, int detail) {
+        if (rowIndex < 0 || rowIndex >= rows) {
+            return null;
+        }
+        return getRowStatus(rowIndex).getStatusDetails( detail);
     }
 
     @Override

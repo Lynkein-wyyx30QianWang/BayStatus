@@ -40,6 +40,25 @@ public class BayStatus implements Serializable {
         setBayRule(bayRule);
     }
 
+    public int size() {
+        int count = 0;
+        for (int i = 1; i <= maxBay; i++) {
+            if (_status[i] == USED) count++;
+        }
+        return count;
+    }
+
+    public int sizeBasedSpace() {
+        int count = 0;
+        for (int i = 1; i <= maxBay; i += 2) {
+            if (_status[i] == USED) count++;
+        }
+        for (int i = 2; i <= maxBay; i += 2) {
+            if (_status[i] == USED) count += 2;
+        }
+        return count;
+    }
+
     private void validateMaxBay(int maxBay) {
         if (maxBay < 1 || maxBay % 2 == 0) {
             throw new IllegalArgumentException(
@@ -297,7 +316,6 @@ public class BayStatus implements Serializable {
 
     public String getStatusDetails(int detail) {
         StringBuilder smallBuf = new StringBuilder();
-        StringBuilder largeBuf = new StringBuilder();
 
         for (int i = 1; i <= maxBay; i++) {
             if (detail == 0) {
@@ -305,22 +323,17 @@ public class BayStatus implements Serializable {
             }else if (detail == 1) {
                 if (_status[i] == FORBIDDEN) continue;
             }
-            if (i % 2 == 1) {
-                appendStatus(smallBuf, i);
-            } else {
-                appendStatus(largeBuf, i);
-            }
+            appendStatus(smallBuf, i);
         }
 
-        return String.format("Bay状态：\n-小仓位:\n%s\n-大仓位:\n%s",
-                smallBuf, largeBuf);
+        return String.format("Bay状态：%s", smallBuf);
     }
 
     private void appendStatus(StringBuilder buffer, int bay) {
         if (!buffer.isEmpty()) {
             buffer.append(",");
         }
-        buffer.append(String.format("Bay[%d]=%d", bay, _status[bay]));
+        buffer.append(String.format("bay[%d]=%d", bay, _status[bay]));
     }
 
     @Override
