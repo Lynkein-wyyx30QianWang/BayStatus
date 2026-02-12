@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" build-on-make="true" name="BayStatus:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/BayStatus_jar</output-path>
+    <root id="archive" name="BayStatus.jar">
+      <element id="module-output" name="BayStatus" />
+    </root>
+  </artifact>
+</component>
