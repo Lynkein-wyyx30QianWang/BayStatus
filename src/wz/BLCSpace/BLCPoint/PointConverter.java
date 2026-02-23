@@ -1,9 +1,16 @@
 package wz.BLCSpace.BLCPoint;
 
 public class PointConverter {
-    private final BayLayout layout;
-    public PointConverter(BayLayout layout) {
-        this.layout = layout;
+    //private final BayLayout layout;
+    private int rowCount;
+    private static final int DECK_TIER = 82;
+    public PointConverter(int rowCount) {
+        this.rowCount = rowCount;
+    }
+
+    public int getRowCount() { return rowCount; }
+    public int getDeckTier() {
+        return DECK_TIER;
     }
 
     // 将 Y 型坐标转为 A 型
@@ -30,14 +37,13 @@ public class PointConverter {
         a.bay = s.getBay();
         a.underDeck = s.isUnderDeck();
 
-        int rowCount = layout.getRowCount();
         a.row = shipToArray(rowCount, s.getRow());
 
         // Tier 转换
         if (s.isUnderDeck()) {
             a.tier = s.getTier() / 2 - 1;
         } else {
-            a.tier = (s.getTier() - layout.getDeckTier()) / 2;
+            a.tier = (s.getTier() - DECK_TIER) / 2;
         }
 
         return a;
@@ -48,14 +54,13 @@ public class PointConverter {
         s.bay = a.getBay();
         s.underDeck = a.isUnderDeck();
 
-        int rowCount = layout.getRowCount();
         s.row = arrayToShip(rowCount, a.getRow());
 
         // Tier 转换：根据是否在甲板下
         if (a.isUnderDeck()) {
             s.tier = (a.getTier() + 1) * 2;
         } else {
-            s.tier = a.getTier() * 2 + layout.getDeckTier();
+            s.tier = a.getTier() * 2 + DECK_TIER;
         }
 
         return s;

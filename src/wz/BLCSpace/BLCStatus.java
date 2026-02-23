@@ -85,7 +85,7 @@ public class BLCStatus {
         return count;
     }
 
-    public boolean occupy(int rowIndex, int layer, int bay) {
+    private boolean occupy(int rowIndex, int layer, int bay) {
         if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
             return false;
         }
@@ -96,7 +96,7 @@ public class BLCStatus {
         return occupy(point.getRow(), point.getTier(), point.getBay());
     }
 
-    public boolean book(int rowIndex, int layer, int bay) {
+    private boolean book(int rowIndex, int layer, int bay) {
         if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
             return false;
         }
@@ -107,7 +107,7 @@ public class BLCStatus {
         return book(point.getRow(), point.getTier(), point.getBay());
     }
 
-    public boolean occupyBooked(int rowIndex, int layer, int bay) {
+    private boolean occupyBooked(int rowIndex, int layer, int bay) {
         if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
             return false;
         }
@@ -118,7 +118,7 @@ public class BLCStatus {
         return occupyBooked(point.getRow(), point.getTier(), point.getBay());
     }
 
-    public void cancelBooked(int rowIndex, int layer, int bay) {
+    private void cancelBooked(int rowIndex, int layer, int bay) {
         if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
             return;
         }
@@ -129,7 +129,7 @@ public class BLCStatus {
         cancelBooked(point.getRow(), point.getTier(), point.getBay());
     }
 
-    public void release(int rowIndex, int layer, int bay) {
+    private void release(int rowIndex, int layer, int bay) {
         if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
             return;
         }
@@ -140,7 +140,7 @@ public class BLCStatus {
         release(point.getRow(), point.getTier(), point.getBay());
     }
 
-    public boolean isAvailable(int rowIndex, int layer, int bay) {
+    private boolean isAvailable(int rowIndex, int layer, int bay) {
         if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
             return false;
         }
@@ -149,6 +149,31 @@ public class BLCStatus {
 
     public boolean isAvailable(APoint point) {
         return isAvailable(point.getRow(), point.getTier(), point.getBay());
+    }
+
+    private boolean isUsed(int rowIndex, int layer, int bay) {
+        if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
+            return false;
+        }
+        return blcSpace[rowIndex][layer].hasGoods(bay);
+    }
+    public boolean isUsed(APoint  point) {
+        return isUsed(point.getRow(), point.getTier(), point.getBay());
+    }
+
+    private boolean isBooked(int rowIndex, int layer, int bay) {
+        if (rowIndex < 0 || rowIndex >= rows || layer < 0 || layer >= layers) {
+            return false;
+        }
+        return blcSpace[rowIndex][layer].isBooked(bay);
+    }
+
+    public boolean isBooked(APoint point) {
+        return isBooked(point.getRow(), point.getTier(), point.getBay());
+    }
+
+    public boolean isFetchable(APoint point) {
+        return getRowStatus(point.getRow()).isFetchable(point.getTier(), point.getBay());
     }
 
     public APoint getFirstAvailableSmallBay() {
@@ -171,6 +196,58 @@ public class BLCStatus {
         return null;
     }
 
+    public List<APoint> getAllUsedBays() {
+        List<APoint> usedBays = new ArrayList<>();
+        for (int i = 0; i < rows; i++) {
+            List<List<Integer>> usedBaysInRow = getRowStatus(i).getUsedBays();
+            for (int j = 0; j < usedBaysInRow.size(); j++) {
+                List<Integer> usedBay = usedBaysInRow.get(j);
+                if (!usedBay.isEmpty()) {
+                    for (int b : usedBay) {
+                        usedBays.add(new APoint(b, i, j));
+                    }
+                }
+            }
+        }
+        return usedBays;
+    }
+
+    public List<APoint> getUsedBaysByPart(int bay, int row, int tier) {
+        List<APoint> usedBays = null;
+        if (bay > maxBay || row >= rows || tier >= layers) {
+            throw new IndexOutOfBoundsException(String.format(
+                    "参数超出范围: bay = %d, row = %d, tier= %d", bay, row, tier));
+        }
+
+        if (bay <= 0 && row < 0 && tier < 0) {
+            usedBays = getAllUsedBays();
+
+        } else if (bay <= 0 && row < 0 && tier >= 0) {
+            usedBays = searchByTier(tier);
+
+        } else if (bay <= 0 && row >= 0 && tier < 0) {
+            usedBays = searchByRow(row);
+
+        } else if (bay <= 0 && row >= 0 && tier >= 0) {
+            usedBays = searchByRowAndTier(row, tier);
+
+        } else if (bay > 0 && row < 0 && tier < 0) {
+            usedBays = searchByBay(bay);
+
+        } else if (bay > 0 && row < 0 && tier >= 0) {
+            usedBays = searchByRowAndBay(row, bay);
+
+        } else if (bay > 0 && row >= 0 && tier < 0) {
+            usedBays = searchByTierAndBay(tier, bay);
+
+        } else if (bay > 0 && row >= 0 && tier >= 0) {
+            if (isUsed(row, tier, bay)) {
+                usedBays = new ArrayList<>();
+                usedBays.add(new APoint(bay, row, tier));
+            }
+        }
+        return usedBays;
+    }
     public List<APoint> getAllAvailableSmallBays() {
         List<APoint> availableBays = new ArrayList<>();
         for (int i = 0; i < rows; i++) {
@@ -262,4 +339,68 @@ public class BLCStatus {
     public String toString() {
         return String.format("wz.BLCSpace.BLCStatus {rows=%d, layers=%d, maxBay=%d}", rows, layers, maxBay);
     }
+
+    private List<APoint> searchByTier(int tier) {
+        List<APoint> points = new ArrayList<>();
+        for (int i = 0; i < rows; i++) {
+           List<Integer> usedBays = getRowStatus(i).getUsedBays(tier);
+           for (int j : usedBays) {
+               points.add(new APoint(j, i, tier));
+           }
+        }
+        return points;
+    }
+
+    private List<APoint> searchByRow(int row) {
+        List<APoint> points = new ArrayList<>();
+        getRowStatus( row).getUsedBays().forEach(usedBays -> {
+            for (int j : usedBays) {
+                points.add(new APoint(j, row, usedBays.indexOf(j)));
+            }
+        });
+        return points;
+    }
+
+    private List<APoint> searchByRowAndTier(int row, int tier) {
+        List<APoint> points = new ArrayList<>();
+        List<Integer> usedBays = getRowStatus(row).getUsedBays(tier);
+        for (int j : usedBays) {
+            points.add(new APoint(j, row, tier));
+        }
+        return points;
+    }
+
+    private  List<APoint> searchByBay(int bay) {
+        List<APoint> points = new ArrayList<>();
+        for (int i = 0; i < rows; i++) {
+            RowStatus rs = getRowStatus(i);
+            for (int layer = 0; layer < layers; layer++) {
+                if (rs.isUsed(layer, bay)) {
+                    points.add(new APoint(bay, i, layer));
+                }
+            }
+        }
+        return points;
+    }
+    private  List<APoint> searchByRowAndBay(int row, int bay) {
+        List<APoint> points = new ArrayList<>();
+        RowStatus rs = getRowStatus(row);
+        for (int layer = 0; layer < layers; layer++) {
+            if (rs.isUsed(layer, bay)) {
+                points.add(new APoint(bay, row, layer));
+            }
+        }
+        return points;
+    }
+    private  List<APoint> searchByTierAndBay(int tier, int bay) {
+        List<APoint> points = new ArrayList<>();
+        for (int i = 0; i < rows; i++) {
+            RowStatus rs = getRowStatus(i);
+            if (rs.isUsed(tier, bay)) {
+                points.add(new APoint(bay, i, tier));
+            }
+        }
+        return points;
+    }
+
 }

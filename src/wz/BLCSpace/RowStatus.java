@@ -111,6 +111,13 @@ public class RowStatus implements Serializable {
         return tierList[layer].isAvailable(bay);
     }
 
+    public boolean isUsed(int layer, int bay) {
+        if (!isValidLayerBay(layer, bay)) {
+            return false;
+        }
+        return tierList[layer].hasGoods(bay);
+    }
+
     public boolean isFetchable(int layer, int bay) {
         if (!isValidLayerBay(layer, bay)) {
             return false;
