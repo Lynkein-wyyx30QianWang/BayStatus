@@ -6,11 +6,21 @@ public final class SPoint extends BLCPoint {
     }
 
     public SPoint(int bay, int row, int tier) {
-        this(bay, row, tier, false);
+        super(bay, row, tier, tier < 82);
+        if (isValidBay(bay) && isValidRow(row) && isValidTier(tier) ) ;
+        else throw new IllegalArgumentException("Invalid SPoint");
     }
 
-    public SPoint(int bay, int row, int tier, boolean underDeck) {
-        super(bay, row, tier, underDeck);
+    public boolean isValidBay(int bay) {
+        return bay > 0;
+    }
+
+    public boolean isValidRow(int row) {
+        return row >= 0;
+    }
+
+    public boolean isValidTier(int tier) {
+        return tier > 0 && tier % 2 == 0;
     }
 
     @Override
@@ -20,7 +30,7 @@ public final class SPoint extends BLCPoint {
 
     @Override
     public SPoint copy() {
-        return new SPoint(bay, row, tier, underDeck);
+        return new SPoint(bay, row, tier);
     }
 
 }

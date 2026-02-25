@@ -6,12 +6,11 @@ public final class YPoint extends BLCPoint {
     }
 
     public YPoint(int bay, int row, int tier) {
-        this(bay, row, tier, false);
+        super(bay, row, tier, false);
+        if (bay < 1 || row < 1 || tier < 1)
+            throw new IllegalArgumentException("Invalid YPoint");
     }
 
-    public YPoint(int bay, int row, int tier, boolean underDeck) {
-        super(bay, row, tier, underDeck);
-    }
 
     @Override
     public char getType() {
@@ -20,6 +19,6 @@ public final class YPoint extends BLCPoint {
 
     @Override
     public YPoint copy() {
-        return new YPoint(bay, row, tier, underDeck);
+        return new YPoint(bay, row, tier);
     }
 }
